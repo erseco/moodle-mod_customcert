@@ -62,6 +62,15 @@ final class element_bootstrap {
      * @return void
      */
     public static function register_defaults(element_registry $registry, ?plugin_provider $provider = null): void {
+        // Defensive load of bundled element class files. The Moodle autoloader
+        // normally resolves these via core_component's subplugin map, but
+        // environments that ship a pre-built component cache (e.g. Moodle
+        // Playground) may have a stale map that does not yet include this
+        // plugin's customcertelement_* subplugin type, causing class_exists()
+        // to fail below. Loading the files directly is a no-op in healthy
+        // environments and makes the bundled elements always available.
+        self::load_bundled_element_files();
+
         // Core/bundled elements shipped with mod_customcert.
         $registry->register('text', text_element::class);
         $registry->register('image', image_element::class);
@@ -120,6 +129,36 @@ final class element_bootstrap {
         } catch (\Throwable $e) {
             if (!defined('PHPUNIT_TEST') && !defined('BEHAT_SITE_RUNNING')) {
                 debugging('Element discovery failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+        }
+    }
+
+    /**
+     * Defensively require the class files for the bundled element subplugins.
+     *
+     * The customcertelement_* element types ship inside this plugin's source
+     * tree at mod/customcert/element/<type>/classes/element.php. They are
+     * normally autoloaded via core_component's subplugin map, but on
+     * environments with a stale or pre-built component cache (e.g. Moodle
+     * Playground) the autoloader may not know about them, which makes
+     * class_exists() return false and breaks element_registry::register().
+     * Requiring the files directly here guarantees the bundled classes are
+     * always defined before they are registered.
+     *
+     * @return void
+     */
+    private static function load_bundled_element_files(): void {
+        $bundled = [
+            'text', 'image', 'date', 'grade', 'coursename', 'code', 'bgimage',
+            'border', 'categoryname', 'coursefield', 'digitalsignature',
+            'expiry', 'gradeitemname', 'qrcode', 'studentname', 'teachername',
+            'userfield', 'userpicture',
+        ];
+        $base = __DIR__ . '/../../element';
+        foreach ($bundled as $type) {
+            $file = $base . '/' . $type . '/classes/element.php';
+            if (is_readable($file)) {
+                require_once($file);
             }
         }
     }
